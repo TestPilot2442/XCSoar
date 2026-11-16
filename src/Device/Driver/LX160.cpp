@@ -17,6 +17,9 @@
 #include "Operation/Operation.hpp"
 
 #include <string_view>
+#include <cstdio>
+#include <cmath>
+#include <mutex>
 
 using std::string_view_literals::operator""sv;
 
@@ -34,15 +37,18 @@ using std::string_view_literals::operator""sv;
  * Write side mirrors `cai_lnav`: $GPGGA + $GPRMC + $GPRMB are emitted on
  * each calculation tick (~1 Hz) using the shared NMEAFormatter helpers.
  *
- * The LX160 has no NMEA writeback for MC / ballast / bugs / polar (those
- * are physical panel switches), so this driver does not advertise
- * SEND_SETTINGS or DECLARE.
+ * LX1606 firmware 5.35: tested PFLX2 full-field MacCready writeback.
+ * QNH writeback and task declaration remain disabled.
  */
 
 class LX160Device final : public AbstractDevice {
   Port &port;
   /* Sampled from DeviceConfig at open time; reconnect required to change. */
   const bool send_position;
+  std::mutex settings_mutex;
+  bool have_wp2 = false;
+  double ballast = 1, bugs = 0, polar_a = 0, polar_b = 0, polar_c = 0;
+  unsigned volume = 0;
 
 public:
   LX160Device(Port &_port, bool _send_position) noexcept
@@ -50,11 +56,23 @@ public:
 
   bool ParseNMEA(const char *line, NMEAInfo &info) override;
 
-  /* No PutMacCready / PutBallast / PutBugs override: the LX160 has been
-     bench-verified to silently ignore both PFLX2 (LX1600 7-field form
-     and LX MiniMap 6-field form).  Ballast and bugs are physical front-
-     panel switches, and the spring-loaded MC knob means MC sync is
-     RECEIVE-only on this hardware. */
+  bool PutMacCready(double mc, OperationEnvironment &env) override
+  {
+    if (!std::isfinite(mc) || mc < 0 || mc > 5)
+      return false;
+
+    char body[128];
+    {
+      const std::lock_guard lock{settings_mutex};
+      if (!have_wp2)
+        return false; // Do not overwrite unknown polar and ballast settings.
+      std::snprintf(body, sizeof(body),
+                    "PFLX2,%.1f,%.2f,%.1f,%.2f,%.2f,%.2f,%u",
+                    mc, ballast, bugs, polar_a, polar_b, polar_c, volume);
+    }
+    PortWriteNMEA(port, body, env);
+    return true;
+  }
 
   void OnCalculatedUpdate(const MoreData &basic,
                           const DerivedInfo &calculated) override;
@@ -77,8 +95,24 @@ LX160Device::ParseNMEA(const char *string, NMEAInfo &info)
     return true;
   }
 
-  if (type == "$LXWP2"sv)
+  if (type == "$LXWP2"sv) {
+    double mc, b, bug, a, c2, c3;
+    unsigned vol;
+    if (std::sscanf(string, "$LXWP2,%lf,%lf,%lf,%lf,%lf,%lf,%u",
+                    &mc, &b, &bug, &a, &c2, &c3, &vol) == 7 &&
+        std::isfinite(b) && std::isfinite(bug) &&
+        std::isfinite(a) && std::isfinite(c2) && std::isfinite(c3)) {
+      const std::lock_guard lock{settings_mutex};
+      ballast = b;
+      bugs = bug;
+      polar_a = a;
+      polar_b = c2;
+      polar_c = c3;
+      volume = vol;
+      have_wp2 = true;
+    }
     return LX::LXWP2(line, info);
+  }
 
   if (type == "$LXWP3"sv)
     return LX::LXWP3(line, info);
@@ -133,6 +167,7 @@ LX160CreateOnPort(const DeviceConfig &config, Port &com_port)
 const struct DeviceRegister lx160_driver = {
   "LX160",
   "LX160",
-  DeviceRegister::RECEIVE_SETTINGS | DeviceRegister::SEND_POSITION,
+  DeviceRegister::RECEIVE_SETTINGS | DeviceRegister::SEND_SETTINGS |
+    DeviceRegister::SEND_POSITION,
   LX160CreateOnPort,
 };
