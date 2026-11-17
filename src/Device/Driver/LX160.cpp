@@ -15,6 +15,7 @@
 #include "Geo/GeoPoint.hpp"
 #include "Formatter/NMEAFormatter.hpp"
 #include "Operation/Operation.hpp"
+#include "Atmosphere/Pressure.hpp"
 
 #include <string_view>
 #include <cstdio>
@@ -38,7 +39,8 @@ using std::string_view_literals::operator""sv;
  * each calculation tick (~1 Hz) using the shared NMEAFormatter helpers.
  *
  * LX1606 firmware 5.35: tested PFLX2 full-field MacCready writeback.
- * QNH writeback and task declaration remain disabled.
+ * QNH writeback uses the tested PFLX3 altitude-offset command.
+ * Task declaration remains disabled.
  */
 
 class LX160Device final : public AbstractDevice {
@@ -49,6 +51,7 @@ class LX160Device final : public AbstractDevice {
   bool have_wp2 = false;
   double ballast = 1, bugs = 0, polar_a = 0, polar_b = 0, polar_c = 0;
   unsigned volume = 0;
+  bool qnh_initial_callback_seen = false;
 
 public:
   LX160Device(Port &_port, bool _send_position) noexcept
@@ -70,6 +73,30 @@ public:
                     "PFLX2,%.1f,%.2f,%.1f,%.2f,%.2f,%.2f,%u",
                     mc, ballast, bugs, polar_a, polar_b, polar_c, volume);
     }
+    PortWriteNMEA(port, body, env);
+    return true;
+  }
+
+  bool PutQNH(const AtmosphericPressure &qnh,
+              OperationEnvironment &env) override
+  {
+    const double hpa = qnh.GetHectoPascal();
+    if (!std::isfinite(hpa) || hpa < 850 || hpa > 1300)
+      return false;
+
+    // Do not overwrite the LX1606 on the first (startup) QNH callback.
+    if (!qnh_initial_callback_seen) {
+      qnh_initial_callback_seen = true;
+      return true;
+    }
+
+    // QNH altitude shift at pressure altitude zero; PFLX3 takes feet.
+    const double offset_m = qnh.PressureAltitudeToQNHAltitude(0);
+    if (!std::isfinite(offset_m) || std::abs(offset_m) > 5000)
+      return false;
+    const long offset_ft = std::lround(offset_m / 0.3048);
+    char body[64];
+    std::snprintf(body, sizeof(body), "PFLX3,%ld,,,,,,,,,,,,", offset_ft);
     PortWriteNMEA(port, body, env);
     return true;
   }
@@ -115,7 +142,7 @@ LX160Device::ParseNMEA(const char *string, NMEAInfo &info)
   }
 
   if (type == "$LXWP3"sv)
-    return LX::LXWP3(line, info);
+    return LX::LXWP3(line, info, LX::LXWP3QNH::SKIP);
 
   /* The LX160 echoes any $GPGGA/$GPRMC it receives back onto its NMEA
      OUT line.  When XCSoar is the GPS source (send_position == true)
