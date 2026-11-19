@@ -305,6 +305,9 @@ struct ComputerSettings {
   AtmosphericPressure pressure;
   Validity pressure_available;
 
+  /** Calibrate QNH once on the ground from GPS and QNE pressure altitude. */
+  bool lx1606_auto_qnh;
+
   AirspaceComputerSettings airspace;
   Plane plane;
 
