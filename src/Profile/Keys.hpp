@@ -62,6 +62,7 @@ constexpr std::string_view Polar = "PolarInformation";
 constexpr std::string_view PolarName = "PolarName";
 constexpr std::string_view PolarDegradation = "PolarDegradation";
 constexpr std::string_view AutoBugs = "AutoBugs";
+constexpr std::string_view LX1606AutoQNH = "LX1606AutoQNH";
 constexpr std::string_view SafetyAltitudeArrival = "SafetyAltitudeArrival";
 constexpr std::string_view SafetyAltitudeTerrain = "SafetyAltitudeTerrain";
 constexpr std::string_view SafteySpeed = "SafteySpeed";
