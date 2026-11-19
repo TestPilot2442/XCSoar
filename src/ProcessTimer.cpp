@@ -25,6 +25,8 @@
 #include "NetComponents.hpp"
 #include "BackendComponents.hpp"
 #include "LogFile.hpp"
+#include "Atmosphere/Pressure.hpp"
+#include <cmath>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -192,12 +194,83 @@ UTCOffsetProcessTimer() noexcept
     CommonInterface::SetComputerSettings().utc_offset = utc_offset;
 }
 
+/**
+ * LX1606: one-time ground calibration from independent GPS AMSL altitude
+ * and QNE pressure altitude.  Runs on the UI thread so SetQNH() updates
+ * both XCSoar's central setting and the external instrument.
+ */
+static void
+LX1606AutoQNHProcessTimer() noexcept
+{
+  static unsigned stable = 0;
+  static bool finished = false;
+  static bool previously_enabled = false;
+  static double last_gps = 0, last_qne = 0;
+
+  const auto &settings = CommonInterface::GetComputerSettings();
+  if (!settings.lx1606_auto_qnh) {
+    stable = 0;
+    finished = false;
+    previously_enabled = false;
+    return;
+  }
+
+  if (!previously_enabled) {
+    previously_enabled = true;
+    stable = 0;
+    finished = false;
+  }
+  if (finished)
+    return;
+
+  const NMEAInfo &basic = CommonInterface::Basic();
+  if (CommonInterface::Calculated().flight.flying ||
+      !basic.gps.real || !basic.location_available ||
+      !basic.gps_altitude_available || !basic.pressure_altitude_available ||
+      !basic.ground_speed_available || basic.ground_speed > 2 ||
+      !std::isfinite(basic.gps_altitude) ||
+      !std::isfinite(basic.pressure_altitude) ||
+      basic.gps_altitude < -500 || basic.gps_altitude > 6000 ||
+      basic.pressure_altitude < -500 || basic.pressure_altitude > 6000 ||
+      std::abs(basic.gps_altitude - basic.pressure_altitude) > 900) {
+    stable = 0;
+    return;
+  }
+
+  if (stable > 0 &&
+      (std::abs(basic.gps_altitude - last_gps) > 12 ||
+       std::abs(basic.pressure_altitude - last_qne) > 8)) {
+    stable = 0;
+  }
+
+  last_gps = basic.gps_altitude;
+  last_qne = basic.pressure_altitude;
+  if (++stable < 15)
+    return;
+
+  const auto static_pressure =
+    AtmosphericPressure::PressureAltitudeToStaticPressure(last_qne);
+  const auto qnh =
+    AtmosphericPressure::FindQNHFromPressure(static_pressure, last_gps);
+  const double hpa = qnh.GetHectoPascal();
+  if (!std::isfinite(hpa) || hpa < 850 || hpa > 1100) {
+    stable = 0;
+    return;
+  }
+
+  finished = true;
+  ActionInterface::SetQNH(qnh, true);
+  LogFmt("LX1606 Auto QNH: GPS altitude {:.1f} m, QNE {:.1f} m, QNH {:.2f} hPa",
+         last_gps, last_qne, hpa);
+}
+
 static void
 SettingsProcessTimer() noexcept
 {
   UTCOffsetProcessTimer();
   BallastDumpProcessTimer();
   ProcessAutoBugs();
+  LX1606AutoQNHProcessTimer();
 }
 
 #ifdef __APPLE__
