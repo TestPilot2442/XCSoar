@@ -84,10 +84,12 @@ public:
     if (!std::isfinite(hpa) || hpa < 850 || hpa > 1300)
       return false;
 
-    // Do not overwrite the LX1606 on the first (startup) QNH callback.
+    // Ignore only the initial standard-atmosphere callback.  A first
+    // user-selected QNH (e.g. 990 hPa) must be sent immediately.
     if (!qnh_initial_callback_seen) {
       qnh_initial_callback_seen = true;
-      return true;
+      if (std::abs(hpa - AtmosphericPressure::Standard().GetHectoPascal()) < 0.01)
+        return true;
     }
 
     // QNH altitude shift at pressure altitude zero; PFLX3 takes feet.
