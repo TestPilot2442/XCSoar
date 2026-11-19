@@ -75,6 +75,7 @@ ComputerSettings::SetDefaults()
   forecast_temperature = Temperature::FromCelsius(25);
   pressure = AtmosphericPressure::Standard();
   pressure_available.Clear();
+  lx1606_auto_qnh = false;
   airspace.SetDefaults();
   task.SetDefaults();
   contest.SetDefaults();
