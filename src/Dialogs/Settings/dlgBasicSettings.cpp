@@ -13,6 +13,7 @@
 #include "UIGlobals.hpp"
 #include "Interface.hpp"
 #include "ActionInterface.hpp"
+#include "Profile/Profile.hpp"
 #include "GlideSolvers/GlidePolar.hpp"
 #include "Dialogs/Message.hpp"
 #include "Dialogs/InternalLink.hpp"
@@ -40,6 +41,7 @@ enum ControlIndex {
   WingLoading,
   Bugs,
   QNH,
+  AutoQNH,
   Altitude,
   Temperature,
 };
@@ -243,6 +245,9 @@ FlightSetupPanel::SetBugs(double bugs) {
 void
 FlightSetupPanel::SetQNH(AtmosphericPressure qnh)
 {
+  CommonInterface::SetComputerSettings().lx1606_auto_qnh = false;
+  Profile::Set(ProfileKeys::LX1606AutoQNH, false);
+  LoadValue(AutoQNH, false);
   ActionInterface::SetQNH(qnh, true);
   RefreshAltitudeControl();
 }
@@ -302,6 +307,10 @@ FlightSetupPanel::OnModified(DataField &df) noexcept
   } else if (IsDataField(Bugs, df)) {
     const DataFieldFloat &dff = (const DataFieldFloat &)df;
     SetBugs(1 - (dff.GetValue() / 100));
+  } else if (IsDataField(AutoQNH, df)) {
+    const bool enabled = GetValueBoolean(AutoQNH);
+    CommonInterface::SetComputerSettings().lx1606_auto_qnh = enabled;
+    Profile::Set(ProfileKeys::LX1606AutoQNH, enabled);
   } else if (IsDataField(QNH, df)) {
     const DataFieldFloat &dff = (const DataFieldFloat &)df;
     SetQNH(Units::FromUserPressure(dff.GetValue()));
@@ -360,6 +369,10 @@ FlightSetupPanel::Prepare(ContainerWindow &parent,
     df.SetUnits(Units::GetPressureName());
     wp->RefreshDisplay();
   }
+
+  AddBoolean(_("Automatic QNH"),
+             _("Once on the ground, calculate QNH from valid GPS altitude and LX1606 QNE altitude."),
+             settings.lx1606_auto_qnh, this);
 
   AddReadOnly(_("Altitude"), NULL, "%.0f %s",
               UnitGroup::ALTITUDE, 0);
