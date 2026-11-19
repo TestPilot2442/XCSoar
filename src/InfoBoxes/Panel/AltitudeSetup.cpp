@@ -4,6 +4,8 @@
 #include "AltitudeSetup.hpp"
 #include "Interface.hpp"
 #include "ActionInterface.hpp"
+#include "Profile/Profile.hpp"
+#include "Form/DataField/Boolean.hpp"
 #include "Components.hpp"
 #include "BackendComponents.hpp"
 #include "Device/MultipleDevices.hpp"
@@ -24,6 +26,7 @@
 class AltitudeSetupPanel : public RowFormWidget,
                            private DataFieldListener {
   WndProperty *qnh_control = nullptr;
+  WndProperty *auto_qnh_control = nullptr;
   WndProperty *elevation_control = nullptr;
 
 public:
@@ -42,7 +45,17 @@ AltitudeSetupPanel::OnModified(DataField &_df) noexcept
   DataField *qnh_df = qnh_control ? qnh_control->GetDataField() : nullptr;
   if (qnh_df && &_df == qnh_df) {
     DataFieldFloat &df = (DataFieldFloat &)_df;
+    CommonInterface::SetComputerSettings().lx1606_auto_qnh = false;
+    Profile::Set(ProfileKeys::LX1606AutoQNH, false);
     ActionInterface::SetQNH(Units::FromUserPressure(df.GetValue()), true);
+    return;
+  }
+
+  DataField *auto_df = auto_qnh_control ? auto_qnh_control->GetDataField() : nullptr;
+  if (auto_df && &_df == auto_df) {
+    const bool enabled = ((DataFieldBoolean &)_df).GetValue();
+    CommonInterface::SetComputerSettings().lx1606_auto_qnh = enabled;
+    Profile::Set(ProfileKeys::LX1606AutoQNH, enabled);
     return;
   }
 
@@ -77,6 +90,10 @@ AltitudeSetupPanel::Prepare([[maybe_unused]] ContainerWindow &parent,
     df.SetUnits(Units::GetPressureName());
     qnh_control->RefreshDisplay();
   }
+
+  auto_qnh_control = AddBoolean(_("Automatic QNH"),
+                                _("Calibrate QNH from GPS and LX1606 QNE on the ground."),
+                                settings.lx1606_auto_qnh, this);
 
   int elevation = 0;
   bool elevation_available = false;
