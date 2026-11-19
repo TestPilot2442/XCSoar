@@ -158,6 +158,7 @@ Profile::Load(const ProfileMap &map, ComputerSettings &settings)
   Load(map, settings.team_code);
   Load(map, settings.poi);
   Load(map, settings.features);
+  map.Get(ProfileKeys::LX1606AutoQNH, settings.lx1606_auto_qnh);
   Load(map, settings.airspace);
   Load(map, settings.circling);
   Load(map, settings.wave);
