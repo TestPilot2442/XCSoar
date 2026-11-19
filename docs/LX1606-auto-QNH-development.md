@@ -1,6 +1,6 @@
 # LX1606 automatic QNH — implementation checklist (development branch)
 
-Status: **not yet implemented**. This document tracks the requested next feature and prevents accidentally treating the existing manual PFLX3 sync as automatic QNH.
+Status: **experimental implementation committed, not yet compiled or flight-tested**. Do not use as a calibrated altimeter without ground verification.
 
 ## Confirmed on Kobo Glo / LX1606
 
@@ -28,3 +28,10 @@ Status: **not yet implemented**. This document tracks the requested next feature
 `LX160Device::OnCalculatedUpdate` has GPS and QNE samples, but does **not** own XCSoar's central QNH setting. Do not directly emit a PFLX3 from this callback without also updating the central QNH: the display and instrument would diverge. XCSoar already has `src/Computer/AutoQNH.cpp`, but it currently requires static pressure and uses waypoint/terrain elevation; the LX1606-specific GPS-versus-QNE path and user preference must be integrated into the central settings pipeline.
 
 Keep branch `lx1606-qnh-sync-test-7.46.1` at commit `700bbfe` unchanged as the field-tested baseline.
+
+## Experimental implementation
+
+- `src/ProcessTimer.cpp`: 15 stable on-ground timer observations with valid GPS fix, GPS AMSL altitude, QNE altitude and low ground speed, then computes QNH from standard-atmosphere pressure and calls `ActionInterface::SetQNH(qnh, true)`.
+- `src/Computer/Settings.hpp`, `src/Computer/Settings.cpp`, `src/Profile/*`: shared profile-persistent `lx1606_auto_qnh` setting (off by default).
+- `src/Dialogs/Settings/dlgBasicSettings.cpp`, `src/InfoBoxes/Panel/AltitudeSetup.cpp`: checkbox in Flight Setup and altitude NavBox panel. Manual QNH entry disables automatic mode.
+- **Outstanding**: CI build and Kobo ground verification; verify LXWP0 altitude really is QNE and is unaffected by changing LX QNH. The test build must not be used in flight until verified.
