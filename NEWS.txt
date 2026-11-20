@@ -43,6 +43,9 @@ Version 7.46.1 - 2026-10-30
   - fix SkyLines user-name replies on ARM
 * task
   - fix a crash drawing the task QR code
+* devices
+  - add experimental LX1606 passthrough for FLARM task declaration
+    and flight download at 38400 baud
 * development
   - compile the QR library as ARMv6 for a Raspberry Pi 1
   - link libatomic into 32-bit ARM builds, except Kobo

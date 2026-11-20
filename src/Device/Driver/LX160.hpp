@@ -4,3 +4,4 @@
 #pragma once
 
 extern const struct DeviceRegister lx160_driver;
+extern const struct DeviceRegister lx1606_driver;

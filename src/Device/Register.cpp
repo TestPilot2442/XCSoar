@@ -99,6 +99,7 @@ static const struct DeviceRegister *const driver_list[] = {
   &stratux_driver,
   &loe_fgren_driver,
   &lx160_driver,
+  &lx1606_driver,
   &gdl90_driver,
   nullptr
 };

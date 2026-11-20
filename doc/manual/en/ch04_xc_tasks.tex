@@ -1043,6 +1043,15 @@ For a complete matrix of the supported logger features see Section~\ref{sec:supp
 The configuration is described in detail in Section~\ref{conf:logger}.  Details
 to the log files can be found in Section~\ref{sec:logfiles}.
 
+For an LX1606 connected to a FLARM recorder, select \texttt{LX1606}
+as the primary driver on the serial port at 38400 baud. Enable
+\texttt{Passthrough device} and select \texttt{FLARM} as the second
+driver. Both devices must use 38400 baud for direct transfers. This
+experimental driver opens the link for task declaration and flight
+download. Check that the LX1606 data resumes after each operation.
+If it does not resume, power-cycle the LX1606 and check the data
+before flying.
+
 \subsection*{Logger activation}
 The logger can be turned on and off automatically or manually.  For para-glider
 XCSoar provides the option to only start the logger automatically. Thus a very

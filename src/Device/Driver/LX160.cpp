@@ -3,6 +3,7 @@
 
 #include "Device/Driver/LX160.hpp"
 #include "Device/Driver.hpp"
+#include "Device/Error.hpp"
 #include "Device/Config.hpp"
 #include "Device/Port/Port.hpp"
 #include "Device/Util/NMEAWriter.hpp"
@@ -16,6 +17,8 @@
 #include "Formatter/NMEAFormatter.hpp"
 #include "Operation/Operation.hpp"
 #include "Atmosphere/Pressure.hpp"
+#include "LogFile.hpp"
+#include "util/ScopeExit.hxx"
 
 #include <string_view>
 #include <cstdio>
@@ -40,11 +43,14 @@ using std::string_view_literals::operator""sv;
  *
  * LX1606 firmware 5.35: tested PFLX2 full-field MacCready writeback.
  * QNH writeback uses the tested PFLX3 altitude-offset command.
- * Task declaration remains disabled.
+ * The separate LX1606 driver adds experimental FLARM passthrough.
  */
 
-class LX160Device final : public AbstractDevice {
+class LX160Device : public AbstractDevice {
+protected:
   Port &port;
+
+private:
   /* Sampled from DeviceConfig at open time; reconnect required to change. */
   const bool send_position;
   std::mutex settings_mutex;
@@ -187,6 +193,98 @@ LX160Device::OnCalculatedUpdate(const MoreData &basic,
     PortWriteNMEA(port, buffer, env);
 }
 
+class LX1606Device final : public LX160Device {
+  std::mutex mode_mutex;
+  unsigned normal_baud = 0;
+
+  bool WaitForVario(OperationEnvironment &env)
+  {
+    try {
+      port.ExpectString("$LXWP0,"sv, env, std::chrono::seconds(5));
+      return true;
+    } catch (const DeviceTimeout &) {
+      return false;
+    }
+  }
+
+public:
+  using LX160Device::LX160Device;
+
+  bool EnablePassThrough(OperationEnvironment &env) override
+  {
+    const std::lock_guard lock{mode_mutex};
+    if (normal_baud != 0)
+      return true;
+
+    const unsigned baud = port.GetBaudrate();
+    if (baud != 38400) {
+      LogFormat("LX1606: FLARM passthrough requires a 38400 baud serial port");
+      return false;
+    }
+
+    // Arm recovery before writing, in case opening the link is cancelled.
+    normal_baud = baud;
+    PortWriteNMEA(port, "PFLX0,COLIBRI", env);
+    port.Drain();
+    env.Sleep(std::chrono::seconds(2));
+    return true;
+  }
+
+  bool EnableNMEA(OperationEnvironment &) override
+  {
+    const std::lock_guard lock{mode_mutex};
+    if (normal_baud == 0)
+      return true;
+
+    port.StopRxThread();
+    const unsigned baud = normal_baud;
+    AtScopeExit(this, baud) noexcept {
+      normal_baud = 0;
+      try {
+        if (port.GetBaudrate() != baud)
+          port.SetBaudrate(baud);
+      } catch (...) {
+        LogError(std::current_exception(), "LX1606: restoring serial baud");
+      }
+    };
+
+    // Finish restoring the link even if the caller cancelled its operation.
+    QuietOperationEnvironment env;
+    const auto send_normal_mode = [&] {
+      PortWriteNMEA(port, "PFLX0,LX1600", env);
+      port.Drain();
+    };
+
+    port.Flush();
+    send_normal_mode();
+    if (WaitForVario(env))
+      return true;
+
+    // Follow the LK8000 recovery sequence verified on the LX1606.
+    for (const unsigned speed : {4800u, baud}) {
+      port.SetBaudrate(speed);
+      env.Sleep(std::chrono::seconds(1));
+      send_normal_mode();
+      env.Sleep(std::chrono::seconds(1));
+      send_normal_mode();
+    }
+
+    if (WaitForVario(env))
+      return true;
+
+    LogFormat("LX1606: no vario data after FLARM; power-cycle the LX1606");
+    return false;
+  }
+
+  void OnCalculatedUpdate(const MoreData &basic,
+                          const DerivedInfo &calculated) override
+  {
+    const std::unique_lock lock{mode_mutex, std::try_to_lock};
+    if (lock.owns_lock() && normal_baud == 0)
+      LX160Device::OnCalculatedUpdate(basic, calculated);
+  }
+};
+
 static Device *
 LX160CreateOnPort(const DeviceConfig &config, Port &com_port)
 {
@@ -199,4 +297,18 @@ const struct DeviceRegister lx160_driver = {
   DeviceRegister::RECEIVE_SETTINGS | DeviceRegister::SEND_SETTINGS |
     DeviceRegister::SEND_POSITION,
   LX160CreateOnPort,
+};
+
+static Device *
+LX1606CreateOnPort(const DeviceConfig &config, Port &port)
+{
+  return new LX1606Device(port, config.send_position);
+}
+
+const struct DeviceRegister lx1606_driver = {
+  "LX1606",
+  "LX1606",
+  DeviceRegister::RECEIVE_SETTINGS | DeviceRegister::SEND_SETTINGS |
+    DeviceRegister::SEND_POSITION | DeviceRegister::PASS_THROUGH,
+  LX1606CreateOnPort,
 };

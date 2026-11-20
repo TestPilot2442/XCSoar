@@ -27,6 +27,7 @@
 #include "Device/Driver/ILEC.hpp"
 #include "Device/Driver/IMI.hpp"
 #include "Device/Driver/LX.hpp"
+#include "Device/Driver/LX160.hpp"
 #include "Device/Driver/LX/Internal.hpp"
 #include "Device/Driver/LX/LXNavDeclare.hpp"
 #include "Device/Driver/LX/NanoFileTransfer.hpp"
@@ -4689,6 +4690,60 @@ TestLXNAVQNHEcho()
   delete device;
 }
 
+static void
+TestLX1606PassThrough()
+{
+  class RecoveryPort final : public DumpPort {
+    unsigned baud = 38400;
+    bool tried_recovery_speed = false;
+    std::string_view vario_reply{"$LXWP0,"};
+
+  public:
+    std::vector<unsigned> baud_changes;
+
+    unsigned GetBaudrate() const noexcept override { return baud; }
+
+    void SetBaudrate(unsigned value) override {
+      baud = value;
+      baud_changes.push_back(value);
+      if (value == 4800)
+        tried_recovery_speed = true;
+    }
+
+    void WaitRead(std::chrono::steady_clock::duration) override {
+      if (!tried_recovery_speed || baud != 38400 || vario_reply.empty())
+        throw DeviceTimeout{"No vario data"};
+    }
+
+    std::size_t Read(std::span<std::byte> dest) override {
+      const auto size = std::min(dest.size(), vario_reply.size());
+      std::memcpy(dest.data(), vario_reply.data(), size);
+      vario_reply.remove_prefix(size);
+      return size;
+    }
+  };
+
+  RecoveryPort port;
+  NullOperationEnvironment env;
+  std::unique_ptr<Device> device{
+    lx1606_driver.CreateOnPort(dummy_config, port)
+  };
+
+  ok1(!lx160_driver.HasPassThrough());
+  ok1(lx1606_driver.HasPassThrough());
+  ok1(device->EnableNMEA(env));
+  ok1(port.GetLines().empty());
+  ok1(device->EnablePassThrough(env));
+  ok1(device->EnablePassThrough(env));
+  ok1(device->EnableNMEA(env));
+  ok1((port.baud_changes == std::vector<unsigned>{4800, 38400}));
+  ok1((port.GetLines() == std::vector<std::string>{
+    "$PFLX0,COLIBRI*4E",
+    "$PFLX0,LX1600*0D", "$PFLX0,LX1600*0D", "$PFLX0,LX1600*0D",
+    "$PFLX0,LX1600*0D", "$PFLX0,LX1600*0D"
+  }));
+}
+
 int main()
 {
   const auto data_path = MakeTestDriverDataPath();
@@ -4720,7 +4775,7 @@ int main()
              + 9 /* LXNanoLogbook */
              + 17 /* LXNAVQNH */
              + 25 /* LXNAVQNHModel */
-             + 6 /* LXNAVQNHEcho */);
+             + 6 /* LXNAVQNHEcho */ + 9 /* LX1606PassThrough */);
   TestGeneric();
   TestTasman();
   TestLK8EX1();
@@ -4806,6 +4861,7 @@ int main()
   TestLXNAVQNH();
   TestLXNAVQNHModel();
   TestLXNAVQNHEcho();
+  TestLX1606PassThrough();
 
   DeinitialiseDataPath();
   return exit_status();

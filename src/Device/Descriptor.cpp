@@ -709,13 +709,16 @@ DeviceDescriptor::CanDeclare() const noexcept
 {
   return driver != nullptr &&
     (driver->CanDeclare() ||
+     (second_device != nullptr && second_driver->CanDeclare()) ||
      blackboard.IsFLARM(index));
 }
 
 bool
 DeviceDescriptor::IsLogger() const noexcept
 {
-  return driver != nullptr && driver->IsLogger();
+  return driver != nullptr &&
+    (driver->IsLogger() ||
+     (second_device != nullptr && second_driver->IsLogger()));
 }
 
 bool
