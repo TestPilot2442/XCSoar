@@ -7,6 +7,7 @@
 #include "Input/InputQueue.hpp"
 #include "Input/InputEvents.hpp"
 #include "Device/MultipleDevices.hpp"
+#include "Device/Descriptor.hpp"
 #include "Blackboard/DeviceBlackboard.hpp"
 #include "time/PeriodClock.hpp"
 #include "time/RoughTime.hpp"
@@ -223,28 +224,52 @@ LX1606AutoQNHProcessTimer() noexcept
   if (finished)
     return;
 
+  DeviceDescriptor *lx = nullptr;
+  for (auto *device : *backend_components->devices) {
+    if (device->IsDriver("LX1606") || device->IsDriver("LX160")) {
+      lx = device;
+      break;
+    }
+  }
+
+  // The declaration or download owns this port until normal mode returns.
+  if (lx == nullptr || lx->IsOccupied()) {
+    stable = 0;
+    return;
+  }
+
+  auto lx_data = backend_components->device_blackboard
+    ->LockGetDeviceDataUpdateClock(lx->GetIndex());
+  lx_data.pressure_altitude_available.Expire(lx_data.clock,
+                                             std::chrono::seconds(3));
+
   const NMEAInfo &basic = CommonInterface::Basic();
+  if (!lx_data.pressure_altitude_available || lx_data.pressure_altitude_weak) {
+    stable = 0;
+    return;
+  }
+
+  const double qne = lx_data.pressure_altitude;
   if (CommonInterface::Calculated().flight.flying ||
       !basic.gps.real || !basic.location_available ||
-      !basic.gps_altitude_available || !basic.pressure_altitude_available ||
-      !basic.ground_speed_available || basic.ground_speed > 2 ||
-      !std::isfinite(basic.gps_altitude) ||
-      !std::isfinite(basic.pressure_altitude) ||
+      !basic.gps_altitude_available || !basic.ground_speed_available ||
+      basic.ground_speed > 2 ||
+      !std::isfinite(basic.gps_altitude) || !std::isfinite(qne) ||
       basic.gps_altitude < -500 || basic.gps_altitude > 6000 ||
-      basic.pressure_altitude < -500 || basic.pressure_altitude > 6000 ||
-      std::abs(basic.gps_altitude - basic.pressure_altitude) > 900) {
+      qne < -500 || qne > 6000 ||
+      std::abs(basic.gps_altitude - qne) > 900) {
     stable = 0;
     return;
   }
 
   if (stable > 0 &&
       (std::abs(basic.gps_altitude - last_gps) > 12 ||
-       std::abs(basic.pressure_altitude - last_qne) > 8)) {
+       std::abs(qne - last_qne) > 8)) {
     stable = 0;
   }
 
   last_gps = basic.gps_altitude;
-  last_qne = basic.pressure_altitude;
+  last_qne = qne;
   if (++stable < 15)
     return;
 
@@ -258,8 +283,14 @@ LX1606AutoQNHProcessTimer() noexcept
     return;
   }
 
+  NullOperationEnvironment env;
+  if (!lx->PutQNH(qnh, env)) {
+    stable = 0;
+    return;
+  }
+
   finished = true;
-  ActionInterface::SetQNH(qnh, true);
+  ActionInterface::SetQNH(qnh, false);
   LogFmt("LX1606 Auto QNH: GPS altitude {:.1f} m, QNE {:.1f} m, QNH {:.2f} hPa",
          last_gps, last_qne, hpa);
 }

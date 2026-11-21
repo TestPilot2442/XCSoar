@@ -1050,7 +1050,8 @@ driver. Both devices must use 38400 baud for direct transfers. This
 experimental driver opens the link for task declaration and flight
 download. Check that the LX1606 data resumes after each operation.
 If it does not resume, power-cycle the LX1606 and check the data
-before flying.
+before flying. Auto QNH waits for fresh LX pressure altitude and an
+available serial port before applying a ground calibration.
 
 \subsection*{Logger activation}
 The logger can be turned on and off automatically or manually.  For para-glider
