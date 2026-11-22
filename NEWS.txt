@@ -46,6 +46,9 @@ Version 7.46.1 - 2026-10-30
 * devices
   - add experimental LX1606 passthrough for FLARM task declaration
     and flight download at 38400 baud
+  - restore the original XCSoar 7.46.1 LX160 driver alongside LX1606
+  - initialize the LX1606 data stream automatically at connection and
+    after a vario restart
   - pause LX1606 Auto QNH while the serial port is busy and use
     fresh LX pressure altitude for calibration
 * development

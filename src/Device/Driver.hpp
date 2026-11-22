@@ -456,6 +456,9 @@ struct DeviceRegister {
      * Can accept XCSoar's glide polar via PutPolar (PolarSync::SEND).
      */
     SEND_POLAR = 0x1000,
+
+    /** Allow OnSysTicker() to start communication on an idle port. */
+    TICK_WITHOUT_DATA = 0x2000,
   };
 
   /**

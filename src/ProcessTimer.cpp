@@ -226,7 +226,7 @@ LX1606AutoQNHProcessTimer() noexcept
 
   DeviceDescriptor *lx = nullptr;
   for (auto *device : *backend_components->devices) {
-    if (device->IsDriver("LX1606") || device->IsDriver("LX160")) {
+    if (device->IsDriver("LX1606")) {
       lx = device;
       break;
     }

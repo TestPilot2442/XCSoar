@@ -1,0 +1,40 @@
+name: LX1606 Kobo restart test
+
+on:
+  push:
+    branches:
+      - lx1606-auto-init-kobo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-kobo:
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 45
+    steps:
+      - name: Install checkout dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install Kobo build dependencies
+        run: ./ide/provisioning/install-debian-packages.sh BASE LINUX ARM KOBO
+
+      - name: Build and check the Kobo package
+        run: |
+          make -j"$(nproc)" TARGET=KOBO DEBUG=y output/KOBO/KoboRoot.tgz
+          tar -tzf output/KOBO/KoboRoot.tgz >/dev/null
+
+      - name: Upload KoboRoot.tgz
+        uses: actions/upload-artifact@v7
+        with:
+          name: LX1606-Kobo-${{ github.sha }}
+          path: output/KOBO/KoboRoot.tgz
+          if-no-files-found: error

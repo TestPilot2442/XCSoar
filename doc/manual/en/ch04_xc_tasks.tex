@@ -1052,6 +1052,11 @@ download. Check that the LX1606 data resumes after each operation.
 If it does not resume, power-cycle the LX1606 and check the data
 before flying. Auto QNH waits for fresh LX pressure altitude and an
 available serial port before applying a ground calibration.
+Select the original \texttt{LX160} driver for the older LX160 model.
+The \texttt{LX1606} driver configures the vario data stream when it
+connects and retries if vario messages stop. XCSoar can remain open
+while the LX1606 restarts. Check that vario and GPS data return before
+using the connection.
 
 \subsection*{Logger activation}
 The logger can be turned on and off automatically or manually.  For para-glider

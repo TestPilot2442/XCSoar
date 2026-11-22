@@ -1755,7 +1755,12 @@ DeviceDescriptor::OnSysTicker() noexcept
 
   was_alive = now_alive;
 
-  if (now_alive || IsBorrowed()) {
+  const bool tick_without_data =
+    (driver->flags & DeviceRegister::TICK_WITHOUT_DATA) != 0;
+  const bool should_tick = tick_without_data
+    ? !IsOccupied() && port != nullptr && port->GetState() == PortState::READY
+    : now_alive || IsBorrowed();
+  if (should_tick) {
     ticker = !ticker;
     if (ticker)
       try {

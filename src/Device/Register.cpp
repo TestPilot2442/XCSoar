@@ -44,6 +44,7 @@
 #include "Device/Driver/XCTracer.hpp"
 #include "Device/Driver/KRT2.hpp"
 #include "Device/Driver/LX160.hpp"
+#include "Device/Driver/LX1606.hpp"
 #include "Device/Driver/Stratux.hpp"
 #include "Device/Driver/GDL90.hpp"
 #include "Device/Driver/LoEFGREN.hpp"

@@ -28,6 +28,7 @@
 #include "Device/Driver/IMI.hpp"
 #include "Device/Driver/LX.hpp"
 #include "Device/Driver/LX160.hpp"
+#include "Device/Driver/LX1606.hpp"
 #include "Device/Driver/LX/Internal.hpp"
 #include "Device/Driver/LX/LXNavDeclare.hpp"
 #include "Device/Driver/LX/NanoFileTransfer.hpp"
@@ -4732,9 +4733,16 @@ TestLX1606PassThrough()
   ok1(!lx160_driver.HasPassThrough());
   ok1(lx1606_driver.HasPassThrough());
   ok1(device->EnableNMEA(env));
+  ok1((port.GetLines() == std::vector<std::string>{
+    "$PFLX0,GPGGA,1,GPRMC,1,LXWP0,1,LXWP1,0,"
+    "LXWP2,5,LXWP3,17,LXWP4,20,LXWP5,50*1B"
+  }));
+  port.Clear();
+  device->OnSysTicker();
   ok1(port.GetLines().empty());
   ok1(device->EnablePassThrough(env));
   ok1(device->EnablePassThrough(env));
+  device->OnSysTicker();
   ok1(device->EnableNMEA(env));
   ok1((port.baud_changes == std::vector<unsigned>{4800, 38400}));
   ok1((port.GetLines() == std::vector<std::string>{
@@ -4742,6 +4750,15 @@ TestLX1606PassThrough()
     "$PFLX0,LX1600*0D", "$PFLX0,LX1600*0D", "$PFLX0,LX1600*0D",
     "$PFLX0,LX1600*0D", "$PFLX0,LX1600*0D"
   }));
+
+  port.Clear();
+  device.reset(lx1606_driver.CreateOnPort(dummy_config, port));
+  NMEAInfo info;
+  info.Reset();
+  ok1(device->ParseNMEA(
+    "$LXWP0,N,4.0,4.0,0.00,0.00,0.00,0.00,0.00,0.00,,,*6D", info));
+  device->OnSysTicker();
+  ok1(port.GetLines().empty());
 }
 
 int main()
@@ -4775,7 +4792,7 @@ int main()
              + 9 /* LXNanoLogbook */
              + 17 /* LXNAVQNH */
              + 25 /* LXNAVQNHModel */
-             + 6 /* LXNAVQNHEcho */ + 9 /* LX1606PassThrough */);
+             + 6 /* LXNAVQNHEcho */ + 12 /* LX1606PassThrough */);
   TestGeneric();
   TestTasman();
   TestLK8EX1();
